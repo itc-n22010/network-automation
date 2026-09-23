@@ -137,6 +137,26 @@ function New-Ttl([int]$comNumber,[string]$logPath,[string]$consolePassword,[stri
     }
     $lines = foreach ($command in $commands) {
         $escaped = $command.Replace("'", "''")
+        $commandTimeout = $timeout
+        $commandTimeoutRules = @($settings.CommandTimeoutRules)
+        $matchingTimeoutRules = @($commandTimeoutRules | Where-Object {
+            $patternProperty = $_.PSObject.Properties['Pattern']
+            $timeoutProperty = $_.PSObject.Properties['TimeoutSeconds']
+            $patternProperty -and $timeoutProperty -and
+            ([string]$command -match [string]$patternProperty.Value)
+        })
+        if ($matchingTimeoutRules.Count -gt 1) {
+            throw "Command '$command' matched multiple CommandTimeoutRules."
+        }
+        if ($matchingTimeoutRules.Count -eq 1) {
+            $configuredTimeout = [int]$matchingTimeoutRules[0].TimeoutSeconds
+            if ($configuredTimeout -lt 1) {
+                throw "CommandTimeoutRules contains an invalid timeout for command '$command'."
+            }
+            $commandTimeout = $configuredTimeout
+        }
+        $timeoutPrefix = if ($commandTimeout -ne $timeout) { "timeout = $commandTimeout`r`n" } else { '' }
+        $timeoutSuffix = if ($commandTimeout -ne $timeout) { "`r`ntimeout = $timeout" } else { '' }
         if ($command -eq 'crypto key generate rsa') {
             $replaceRule = @($settings.DialogRules | Where-Object { $_.Id -eq 'rsa-replace-existing-no' } | Select-Object -First 1)
             $rsaRule = @($settings.DialogRules | Where-Object { $_.Id -eq 'rsa-modulus-2048' } | Select-Object -First 1)
@@ -153,7 +173,7 @@ function New-Ttl([int]$comNumber,[string]$logPath,[string]$consolePassword,[stri
         } else {
             if ($command -match '^username\s+\S+\s+privilege\s+\d+\s+secret\s+') {
                 $block = New-Object System.Collections.Generic.List[string]
-                [void]$block.Add("logpause")
+                [void]$block.Add($timeoutPrefix + "logpause")
                 [void]$block.Add("sendln '$escaped'")
                 [void]$block.Add("wait $dialogWait")
                 for ($index = 0; $index -lt $ttlDialogRules.Count; $index++) {
@@ -162,11 +182,11 @@ function New-Ttl([int]$comNumber,[string]$logPath,[string]$consolePassword,[stri
                     [void]$block.Add("if result=$($index + 1) sendln '$response'")
                     [void]$block.Add("if result=$($index + 1) wait '#'")
                 }
-                [void]$block.Add("logstart")
+                [void]$block.Add("logstart" + $timeoutSuffix)
                 $block -join "`r`n"
             } else {
                 $block = New-Object System.Collections.Generic.List[string]
-                [void]$block.Add("sendln '$escaped'")
+                [void]$block.Add($timeoutPrefix + "sendln '$escaped'")
                 [void]$block.Add("wait $dialogWait")
                 for ($index = 0; $index -lt $ttlDialogRules.Count; $index++) {
                     $rule = $ttlDialogRules[$index]
@@ -174,7 +194,7 @@ function New-Ttl([int]$comNumber,[string]$logPath,[string]$consolePassword,[stri
                     [void]$block.Add("if result=$($index + 1) sendln '$response'")
                     [void]$block.Add("if result=$($index + 1) wait '#'")
                 }
-                $block -join "`r`n"
+                ($block -join "`r`n") + $timeoutSuffix
             }
         }
         "if result=0 goto command_error"
