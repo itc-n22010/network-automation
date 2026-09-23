@@ -15,6 +15,7 @@
 | Ciscoの対話プロンプトと応答 | `config\settings.json` の `DialogRules` |
 | 必須CSV列 | `config\settings.json` の `RequiredCsvFields` |
 | 通信速度、タイムアウト、保存先 | `config\settings.json` の該当項目 |
+| 長時間かかる特定コマンドの待機時間 | `config\settings.json` の `CommandTimeoutRules` |
 
 `Run-CiscoAutoConfig.ps1`、`Generate-Configs.ps1`、`templates\cisco_build.ttl`、
 BATファイルは、通常の運用変更では編集しません。
@@ -179,6 +180,26 @@ powershell -NoProfile -ExecutionPolicy Bypass -File .\Generate-Configs.ps1
 
 ホスト名に一致するテンプレートがない場合、CSV不備やテンプレート不備がある場合は、
 安全のため設定を投入しません。
+
+## 長時間コマンドの待機時間
+
+通常のコマンドは`CommandTimeoutSeconds`（既定12秒）で待機します。SD-WANなどで
+`commit`に時間がかかる場合は、`CommandTimeoutRules`へコマンドの正規表現と秒数を
+登録します。現在は`commit`を最大300秒待機する設定です。
+
+```json
+"CommandTimeoutRules": [
+  {
+    "Id": "sdwan-commit",
+    "Pattern": "^commit(?:\\s|$)",
+    "TimeoutSeconds": 300
+  }
+]
+```
+
+テンプレート内のコマンドは一括送信されません。空行と`!`を除く各行について、
+`sendln`で1行送信し、Ciscoプロンプトまたは`TtlPrompt`を`wait`してから次の行へ
+進みます。`commit`も同じ動作ですが、上記の長いタイムアウトを使用します。
 
 `Erasing the nvram filesystem will remove all configuration files! Continue? [confirm]`
 のような初期化・消去確認が表示された場合も、自動で`confirm`を送信しません。
