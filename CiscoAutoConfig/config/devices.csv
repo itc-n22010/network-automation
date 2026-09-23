@@ -1,0 +1,3 @@
+SerialNumber,DeviceID,Hostname,ManagementIP,SubnetMask,DefaultGateway,EnablePassword,ConsolePassword,SshUsername,SshPassword,SshDomain,SshKeyBits
+FOC1349W2HK,A-C2960-STN01,A-C2960-STN01,192.0.2.11,255.255.255.0,192.0.2.1,ChangeMeEnable,ChangeMeConsole,admin,ChangeMeSsh,example.local,2048
+FOC1349W2H0,A-C2960-STN01,A-C2960-STN01,192.0.2.12,255.255.255.0,192.0.2.1,ChangeMeEnable,ChangeMeConsole,admin,ChangeMeSsh,example.local,2048

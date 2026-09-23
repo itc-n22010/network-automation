@@ -1,0 +1,193 @@
+; ====================================================================
+; Tera Term Macro: network_SSH_auto.ttl
+; Purpose: Process all TXT files for each device in the list below
+; ====================================================================
+
+; --- 設定情報 ---
+PORT     = '22'
+USERNAME = 'admin'
+PASSWORD = 'password'
+
+; --- 作業フォルダ ---
+; 動作確認済みの元マクロと同じく、Tera Termが返すフォルダを使用する
+getdir BASE_DIR
+
+COMMANDS_DIR = BASE_DIR
+strconcat COMMANDS_DIR '\commands'
+
+LOGS_BASE_DIR = BASE_DIR
+strconcat LOGS_BASE_DIR '\logs'
+
+foldercreate LOGS_BASE_DIR
+
+; --- 接続先リスト ---
+; 形式: ホスト名,IPアドレス
+; 機器追加時は、下の strconcat 行を1行コピーして追加する
+DEVICE_LIST = ''
+strconcat DEVICE_LIST 'Allied-SW-01,192.168.3.6;'
+strconcat DEVICE_LIST 'Allied-SW-02,192.168.3.7;'
+strconcat DEVICE_LIST 'Allied-SW-03,192.168.3.8;'
+
+; ====================================================================
+; 接続先を1台ずつ処理
+; ====================================================================
+:READ_DEVICE
+strlen DEVICE_LIST
+if result = 0 goto SCRIPT_END
+
+strscan DEVICE_LIST ';'
+if result = 0 goto SCRIPT_END
+
+RECORD_END = result
+RECORD_LENGTH = RECORD_END
+RECORD_LENGTH = RECORD_LENGTH - 1
+strcopy DEVICE_LIST 1 RECORD_LENGTH DEVICE_LINE
+
+REMAINDER_START = RECORD_END
+REMAINDER_START = REMAINDER_START + 1
+strcopy DEVICE_LIST REMAINDER_START 255 DEVICE_LIST
+
+strscan DEVICE_LINE ','
+if result = 0 goto READ_DEVICE
+
+SEPARATOR = result
+HOST_LENGTH = SEPARATOR
+HOST_LENGTH = HOST_LENGTH - 1
+IP_START = SEPARATOR
+IP_START = IP_START + 1
+strcopy DEVICE_LINE 1 HOST_LENGTH HOST_NAME
+strcopy DEVICE_LINE IP_START 255 DEVICE_IP
+
+strlen DEVICE_IP
+if result = 0 goto READ_DEVICE
+
+; --- commandsフォルダ内のTXTファイル検索 ---
+SEARCH_PATTERN = COMMANDS_DIR
+strconcat SEARCH_PATTERN '\*.txt'
+findfirst H_FIND SEARCH_PATTERN FILE_NAME
+if result = 0 goto READ_DEVICE
+
+; ====================================================================
+; 1台の機器について、すべてのTXTを処理
+; ====================================================================
+:FILE_LOOP
+
+; --- SSH接続 ---
+CONN_CMD = DEVICE_IP
+strconcat CONN_CMD ':'
+strconcat CONN_CMD PORT
+strconcat CONN_CMD ' /ssh /2 /auth=password /user='
+strconcat CONN_CMD USERNAME
+strconcat CONN_CMD ' /passwd='
+strconcat CONN_CMD PASSWORD
+strconcat CONN_CMD ' /timeout=3'
+
+connect CONN_CMD
+mpause 100
+testlink
+if result = 0 goto SKIP_DEVICE
+
+:CONNECTED
+; --- SSH接続待機 ---
+timeout = 10
+wait '>' '#'
+if result = 0 goto CLOSE_SSH_AND_NEXT
+
+; --- enable昇格 ---
+sendln 'enable'
+wait 'Password:' 'password:' '#'
+
+if result = 1 or result = 2 then
+    sendln PASSWORD
+    wait '#'
+    if result = 0 goto CLOSE_SSH_AND_NEXT
+elseif result = 3 then
+    ; パスワード不要で特権モードへ移行済み
+else
+    goto CLOSE_SSH_AND_NEXT
+endif
+
+; ====================================================================
+; ログ開始
+; ホスト名ごとに保存する
+; ====================================================================
+TARGET_LOG_DIR = LOGS_BASE_DIR
+strconcat TARGET_LOG_DIR '\'
+strconcat TARGET_LOG_DIR HOST_NAME
+foldercreate TARGET_LOG_DIR
+
+LOG_FILE_NAME = FILE_NAME
+strscan LOG_FILE_NAME '.txt'
+if result > 0 then
+    strcopy LOG_FILE_NAME 1 result-1 LOG_FILE_NAME
+    strconcat LOG_FILE_NAME '.log'
+else
+    strconcat LOG_FILE_NAME '.log'
+endif
+
+FULL_LOG_PATH = TARGET_LOG_DIR
+strconcat FULL_LOG_PATH '\'
+strconcat FULL_LOG_PATH LOG_FILE_NAME
+
+logopen FULL_LOG_PATH 0 0 0 0 0
+if result <> 0 goto CLOSE_SSH_AND_NEXT
+
+; ====================================================================
+; コマンドTXTを開き、1行ずつ実行
+; ====================================================================
+FULL_TXT_PATH = COMMANDS_DIR
+strconcat FULL_TXT_PATH '\'
+strconcat FULL_TXT_PATH FILE_NAME
+
+fileopen H_CMD FULL_TXT_PATH 0
+if result <> 0 goto CLOSE_LOG_AND_NEXT
+
+:READ_CMD_LOOP
+filereadln H_CMD CMD_LINE
+if result <> 0 goto CLOSE_TXT_AND_NEXT
+
+strlen CMD_LINE
+if result = 0 goto READ_CMD_LOOP
+
+strcopy CMD_LINE 1 1 FIRST_CHAR
+strcompare FIRST_CHAR ';'
+if result = 0 goto READ_CMD_LOOP
+
+; ログ開始後にコマンドを送信
+sendln CMD_LINE
+
+timeout = 30
+wait '#' '>'
+if result = 0 goto CLOSE_TXT_AND_NEXT
+
+mpause 100
+goto READ_CMD_LOOP
+
+; ====================================================================
+; 後処理
+; ====================================================================
+:CLOSE_TXT_AND_NEXT
+fileclose H_CMD
+
+:CLOSE_LOG_AND_NEXT
+logclose
+
+:CLOSE_SSH_AND_NEXT
+disconnect 0
+mpause 200
+
+:NEXT_FILE
+findnext H_FIND FILE_NAME
+if result = 0 goto NEXT_DEVICE
+goto FILE_LOOP
+
+:SKIP_DEVICE
+findclose H_FIND
+goto READ_DEVICE
+
+:NEXT_DEVICE
+findclose H_FIND
+goto READ_DEVICE
+
+:SCRIPT_END
+end
