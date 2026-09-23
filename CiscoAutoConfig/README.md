@@ -42,6 +42,10 @@ COM番号はPC・ドライバー・接続順で変わるため固定できない
 生成専用、`templates`がTTL/設定テンプレート、`config`が入力、`logs`が受信
 ログ、`results`が結果CSV、`backup`が将来のバックアップ領域である。
 
+テンプレートの設定コマンドは一括送信せず、1行ずつ送信してCiscoプロンプトを待機する。
+長時間かかる`commit`などの待機時間は`config\settings.json`の
+`CommandTimeoutRules`で設定する。
+
 ## セットアップ
 
 1. Windows 11にTera Termをオフライン導入し、`config\settings.json`の
