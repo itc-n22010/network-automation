@@ -102,15 +102,15 @@ if result = 0 goto ENABLE_DONE
 sendln 'enable'
 wait 'Password:' 'password:' '#'
 
-if result = 1 or result = 2 then
-    sendln ENABLE_PASSWORD
-    wait '#'
-    if result = 0 goto CLOSE_SSH_AND_NEXT
-elseif result = 3 then
-    ; パスワード不要で特権モードへ移行済み
-else
-    goto CLOSE_SSH_AND_NEXT
-endif
+if result = 3 goto ENABLE_DONE
+if result = 1 goto SEND_ENABLE_PASSWORD
+if result = 2 goto SEND_ENABLE_PASSWORD
+goto CLOSE_SSH_AND_NEXT
+
+:SEND_ENABLE_PASSWORD
+sendln ENABLE_PASSWORD
+wait '#'
+if result = 0 goto CLOSE_SSH_AND_NEXT
 
 :ENABLE_DONE
 ; ====================================================================
