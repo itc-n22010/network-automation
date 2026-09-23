@@ -3,6 +3,13 @@
   "BaudRate": 9600,
   "ProbeTimeoutSeconds": 8,
   "CommandTimeoutSeconds": 12,
+  "CommandTimeoutRules": [
+    {
+      "Id": "sdwan-commit",
+      "Pattern": "^commit(?:\\s|$)",
+      "TimeoutSeconds": 300
+    }
+  ],
   "LogDirectory": "logs",
   "ResultDirectory": "results",
   "GeneratedDirectory": "generated",
