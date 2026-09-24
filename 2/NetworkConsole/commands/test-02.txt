@@ -1,0 +1,9 @@
+# ============================================================
+# test-02
+# ============================================================
+
+terminal length 0
+show clock
+show version
+show interfaces status
+show logging

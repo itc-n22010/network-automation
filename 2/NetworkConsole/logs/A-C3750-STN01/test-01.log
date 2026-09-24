@@ -1,0 +1,83 @@
+﻿
+A-C3750-STN01#
+A-C3750-STN01#terminal length 0
+A-C3750-STN01#show clock
+*23:09:01.690 UTC Mon Mar 1 1993
+A-C3750-STN01#show run
+Building configuration...
+
+Current configuration : 1112 bytes
+!
+version 12.2
+no service pad
+service timestamps debug uptime
+service timestamps log uptime
+no service password-encryption
+!
+hostname A-C3750-STN01
+!
+enable secret 5 $1$Ko07$vq7dCd0w.oH.4TqBhhSui0
+!
+username admin privilege 15 secret 5 $1$KD8c$137YmcYsycd8EXO0wHnTK0
+username test password 0 test
+no aaa new-model
+system mtu routing 1500
+ip subnet-zero
+!
+ip domain-name example.local
+ip ssh version 2
+!
+!
+!
+!
+!
+no file verify auto
+spanning-tree mode pvst
+spanning-tree extend system-id
+!
+vlan internal allocation policy ascending
+!
+interface FastEthernet0/1
+!
+interface FastEthernet0/2
+!
+interface FastEthernet0/3
+!
+interface FastEthernet0/4
+!
+interface FastEthernet0/5
+!
+interface FastEthernet0/6
+!
+interface FastEthernet0/7
+!
+interface FastEthernet0/8
+!
+interface GigabitEthernet0/1
+!
+interface Vlan1
+ ip address 192.0.2.12 255.255.255.0
+ no ip route-cache
+!
+interface Vlan2
+ no ip address
+ no ip route-cache
+!
+ip default-gateway 192.0.2.1
+ip http server
+ip http secure-server
+!
+control-plane
+!
+!
+line con 0
+line vty 0 4
+ login local
+ transport input ssh
+line vty 5 15
+ login local
+ transport input ssh
+!
+end
+
+A-C3750-STN01#

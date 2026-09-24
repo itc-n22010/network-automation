@@ -1,0 +1,3 @@
+﻿"Timestamp","Status","Reason","SerialNumber","DeviceID","Hostname","ManagementIP","ComPort","LogPath"
+"2026-09-24T00:01:10.0037223+09:00","NOT_EXECUTED","ERROR SERIAL_PROBE: ""0"" 個の引数を指定して ""Open"" を呼び出し中に例外が発生しました: ""ポート 'COM3' へのアクセスが拒否されました。""","","","","","COM3","D:\network\work\K\CiscoAutoConfig\logs\probe_COM3_20260924_000058.log"
+"2026-09-24T00:01:10.0109123+09:00","NOT_EXECUTED","Erasing the nvram filesystem will remove all configuration files! Continue? [confirm]","","","","","COM4","D:\network\work\K\CiscoAutoConfig\logs\probe_COM4_20260924_000058.log"
