@@ -1,0 +1,385 @@
+; ====================================================================
+; Network Console - Allied Telesis / Tera Term Macro
+; Serial Console Version
+; ====================================================================
+
+; -------------------------------
+; 設定
+; -------------------------------
+COM_PORT = 3
+BAUD_RATE = 9600
+
+strcopy 'admin' 1 999 USERNAME
+strcopy 'ChangeMeSsh' 1 999 PASSWORD
+strcopy 'test' 1 999 ENABLE_PASSWORD
+strcopy 'commands\test-01.txt' 1 999 COMMAND_FILE
+strcopy '#' 1 1 HASH_PROMPT
+strcopy '>' 1 1 USER_PROMPT
+
+; -------------------------------
+; パス設定
+; -------------------------------
+getdir MACRO_DIR
+
+strcopy MACRO_DIR 1 999 COMMAND_PATH
+strconcat COMMAND_PATH '\'
+strconcat COMMAND_PATH COMMAND_FILE
+
+strcopy MACRO_DIR 1 999 LOG_DIR
+strconcat LOG_DIR '\logs'
+
+foldercreate LOG_DIR
+
+getdate LOG_DATE '%Y%m%d-%H%M%S'
+
+strcopy LOG_DIR 1 999 LOG_PATH
+strconcat LOG_PATH '\teraterm-'
+strconcat LOG_PATH LOG_DATE
+strconcat LOG_PATH '.log'
+
+
+; ====================================================================
+; COM接続
+; ====================================================================
+
+strcopy '/C=' 1 999 CONNECT_STRING
+
+int2str COM_TEXT COM_PORT
+strconcat CONNECT_STRING COM_TEXT
+
+strconcat CONNECT_STRING ' /BAUD='
+
+int2str BAUD_TEXT BAUD_RATE
+strconcat CONNECT_STRING BAUD_TEXT
+
+strconcat CONNECT_STRING ' /PARITY=none /DATA=8 /STOP=1 /FLOW=none'
+
+connect CONNECT_STRING
+
+; ★ connect は成功時 result=0
+if result <> 0 goto connect_error
+
+
+; ====================================================================
+; ログ開始
+; ====================================================================
+
+logopen LOG_PATH 0 1
+
+if result <> 0 goto log_error
+
+
+; ====================================================================
+; 初期化
+; ====================================================================
+
+flushrecv
+
+timeout = 2
+
+sendln ''
+
+pause 1
+
+; 画面を起こす
+sendln ''
+
+
+; ====================================================================
+; ログイン待ち
+; ====================================================================
+
+timeout = 10
+
+wait 'login:'
+if result = 1 goto login_user
+
+timeout = 1
+wait 'Login:'
+if result = 1 goto login_user
+
+timeout = 1
+wait 'Username:'
+if result = 1 goto login_user
+
+timeout = 1
+wait 'username:'
+if result = 1 goto login_user
+
+timeout = 1
+wait 'Password:'
+if result = 1 goto login_password
+
+timeout = 1
+wait 'password:'
+if result = 1 goto login_password
+
+timeout = 1
+wait USER_PROMPT
+if result = 1 goto do_enable
+
+timeout = 1
+wait HASH_PROMPT
+if result = 1 goto run_commands
+
+goto login_timeout
+
+
+; ====================================================================
+; ユーザー名
+; ====================================================================
+
+:login_user
+
+sendln USERNAME
+
+timeout = 10
+
+wait 'Password:'
+if result = 1 goto login_password
+
+timeout = 1
+
+wait 'password:'
+if result = 1 goto login_password
+
+goto login_timeout
+
+
+; ====================================================================
+; パスワード
+; ====================================================================
+
+:login_password
+
+sendln PASSWORD
+
+timeout = 10
+
+wait USER_PROMPT
+if result = 1 goto do_enable
+
+timeout = 1
+
+wait HASH_PROMPT
+if result = 1 goto run_commands
+
+goto login_timeout
+
+
+; ====================================================================
+; enable
+; ====================================================================
+
+:do_enable
+
+sendln 'enable'
+
+timeout = 10
+
+wait 'Password:'
+if result = 1 goto enable_password
+
+timeout = 1
+
+wait 'password:'
+if result = 1 goto enable_password
+
+timeout = 1
+
+wait HASH_PROMPT
+if result = 1 goto run_commands
+
+goto enable_timeout
+
+
+; ====================================================================
+; enable password
+; ====================================================================
+
+:enable_password
+
+sendln ENABLE_PASSWORD
+
+timeout = 10
+
+wait HASH_PROMPT
+if result = 1 goto run_commands
+
+goto enable_timeout
+
+
+; ====================================================================
+; コマンドファイル
+; ====================================================================
+
+:run_commands
+
+fileopen COMMAND_HANDLE COMMAND_PATH 0
+
+if result <> 0 goto command_file_error
+
+
+; ====================================================================
+; コマンド読み込み
+; ====================================================================
+
+:read_command
+
+filereadln COMMAND_HANDLE COMMAND
+
+if result = 1 goto completed
+
+strtrim COMMAND
+
+
+; 空行
+strcompare COMMAND ''
+if result = 0 goto read_command
+
+
+; コメント
+strcopy COMMAND 1 1 FIRST_CHAR
+
+strcompare FIRST_CHAR ';'
+if result = 0 goto read_command
+
+strcompare FIRST_CHAR HASH_PROMPT
+if result = 0 goto read_command
+
+
+; ====================================================================
+; コマンド実行
+; ====================================================================
+
+sendln COMMAND
+
+
+; AlliedWare Plus のコマンド出力が終わるまで待つ
+timeout = 10
+
+wait HASH_PROMPT
+if result = 1 goto read_command
+
+timeout = 1
+
+wait '--More--'
+if result = 1 goto continue_pager
+
+timeout = 1
+
+wait 'More:'
+if result = 1 goto continue_pager
+
+timeout = 1
+
+wait '(more)'
+if result = 1 goto continue_pager
+
+timeout = 1
+
+wait 'Press any key to continue'
+if result = 1 goto continue_pager
+
+goto read_command
+
+
+; ====================================================================
+; ページャ
+; ====================================================================
+
+:continue_pager
+
+send ' '
+
+timeout = 5
+
+wait '--More--'
+if result = 1 goto continue_pager
+
+timeout = 1
+
+wait 'More:'
+if result = 1 goto continue_pager
+
+timeout = 1
+
+wait '(more)'
+if result = 1 goto continue_pager
+
+timeout = 1
+
+wait 'Press any key to continue'
+if result = 1 goto continue_pager
+
+goto read_command
+
+
+; ====================================================================
+; 完了
+; ====================================================================
+
+:completed
+
+fileclose COMMAND_HANDLE
+
+logclose
+
+closett
+
+messagebox 'Completed. Log saved in the logs folder.' 'Network Console'
+
+end
+
+
+; ====================================================================
+; エラー
+; ====================================================================
+
+:connect_error
+
+messagebox 'Could not open the COM port. Check COM_PORT.' 'Network Console'
+
+end
+
+
+:log_error
+
+closett
+
+messagebox 'Could not open the log file.' 'Network Console'
+
+end
+
+
+:login_timeout
+
+logclose
+
+closett
+
+messagebox 'Login prompt timeout. Check the console prompt and credentials.' 'Network Console'
+
+end
+
+
+:enable_timeout
+
+logclose
+
+closett
+
+messagebox 'enable failed. Check the enable password or device prompt.' 'Network Console'
+
+end
+
+
+:command_file_error
+
+logclose
+
+closett
+
+messagebox 'Could not open COMMAND_FILE.' 'Network Console'
+
+end

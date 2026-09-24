@@ -1,0 +1,20 @@
+hostname {{Hostname}}
+!
+interface Vlan1
+ ip address {{ManagementIP}} {{SubnetMask}}
+ no shutdown
+interface Vlan3
+ ip address 3.3.3.3 255.255.255.255
+ no shutdown
+!
+ip default-gateway {{DefaultGateway}}
+!
+ip domain-name {{SshDomain}}
+username {{SshUsername}} privilege 15 secret {{SshPassword}}
+crypto key generate rsa
+ip ssh version 2
+line vty 0 4
+ login local
+ transport input ssh
+ exit
+end

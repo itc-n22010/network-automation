@@ -1,0 +1,106 @@
+{
+  "TeraTermMacro": "C:\\Program Files (x86)\\teraterm5\\ttpmacro.exe",
+  "BaudRate": 9600,
+  "ProbeTimeoutSeconds": 8,
+  "CommandTimeoutSeconds": 12,
+  "CommandTimeoutRules": [
+    {
+      "Id": "sdwan-commit",
+      "Pattern": "^commit(?:\\s|$)",
+      "TimeoutSeconds": 300
+    }
+  ],
+  "LogDirectory": "logs",
+  "ResultDirectory": "results",
+  "GeneratedDirectory": "generated",
+  "BackupDirectory": "backup",
+  "TemplateRules": [
+    {
+      "Id": "c2960-stn01",
+      "HostnamePattern": "^A-C2960-[A-Za-z0-9_-]+$",
+      "Template": "templates\\cisco_config_c2960_stn01.template.txt"
+    },
+    {
+      "Id": "c3750-stn10",
+      "HostnamePattern": "^A-C3750-(?!01-|02-)[A-Za-z0-9_-]+$",
+      "Template": "templates\\cisco_config_c3750_stn10.template.txt"
+    },
+    {
+      "Id": "c3750-01-stn20",
+      "HostnamePattern": "^A-C3750-01-[A-Za-z0-9_-]+$",
+      "Template": "templates\\cisco_config_c3750_01_stn20.template.txt"
+    },
+    {
+      "Id": "c3750-02-stn20",
+      "HostnamePattern": "^A-C3750-02-[A-Za-z0-9_-]+$",
+      "Template": "templates\\cisco_config_c3750_02_stn20.template.txt"
+    }
+  ],
+  "RequiredCsvFields": [
+    "SerialNumber",
+    "DeviceID",
+    "Hostname",
+    "ManagementIP",
+    "SubnetMask",
+    "DefaultGateway",
+    "EnablePassword",
+    "ConsolePassword",
+    "SshUsername",
+    "SshPassword",
+    "SshDomain",
+    "SshKeyBits"
+  ],
+  "DialogRules": [
+    {
+      "Id": "initial-config-no",
+      "Pattern": "Would you like to enter the initial configuration dialog\\?\\s*\\[yes/no\\]\\s*:",
+      "Response": "no",
+      "AppendEnter": true,
+      "MaxMatches": 1
+    },
+    {
+      "Id": "continue-config-no",
+      "Pattern": "Continue with configuration dialog\\?\\s*\\[yes/no\\]\\s*:",
+      "Response": "no",
+      "AppendEnter": true,
+      "MaxMatches": 1
+    },
+    {
+      "Id": "terminate-autoinstall",
+      "Pattern": "Would you like to terminate autoinstall\\?\\s*\\[yes\\]\\s*:",
+      "Response": "yes",
+      "AppendEnter": true,
+      "MaxMatches": 1
+    },
+    {
+      "Id": "press-return",
+      "Pattern": "Press (?:RETURN|Enter) to (?:get started|continue)",
+      "Response": "",
+      "AppendEnter": true,
+      "MaxMatches": 1
+    },
+    {
+      "Id": "crypto-confirm-no",
+      "Pattern": "(?:crypto|cryptographic)[^\\r\\n]*(?:\\[yes/no\\]|\\(yes/no\\))\\s*:",
+      "Response": "no",
+      "AppendEnter": true,
+      "MaxMatches": 1
+    },
+    {
+      "Id": "rsa-replace-existing-no",
+      "Pattern": "Do you really want to replace them\\?\\s*\\[yes/no\\]:",
+      "TtlPrompt": "Do you really want to replace them?",
+      "Response": "no",
+      "AppendEnter": true,
+      "MaxMatches": 1
+    },
+    {
+      "Id": "rsa-modulus-2048",
+      "Pattern": "How many bits in the modulus\\s*\\[[0-9]+\\]\\s*:",
+      "TtlPrompt": "How many bits in the modulus",
+      "Response": "2048",
+      "AppendEnter": true,
+      "MaxMatches": 1
+    }
+  ]
+}

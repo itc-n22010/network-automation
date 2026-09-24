@@ -1,0 +1,18 @@
+﻿hostname edge-002
+!
+interface Vlan1
+ ip address 192.0.2.12 255.255.255.0
+ no shutdown
+!
+ip default-gateway 192.0.2.1
+!
+ip domain-name example.local
+username admin privilege 15 secret ChangeMeSsh
+crypto key generate rsa
+ip ssh version 2
+line vty 0 4
+ login local
+ transport input ssh
+ exit
+!
+end

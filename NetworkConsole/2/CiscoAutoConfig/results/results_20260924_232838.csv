@@ -1,0 +1,3 @@
+﻿"Timestamp","Status","Reason","SerialNumber","DeviceID","Hostname","ManagementIP","ComPort","LogPath"
+"2026-09-24T23:29:18.0569483+09:00","SUCCESS","Configuration applied and saved","FOC1349W2H0","A-C3750-02-STN01","A-C3750-STN01","192.0.2.12","COM4","D:\network\work\K\CiscoAutoConfig\logs\A-C3750-02-STN01_COM4_20260924_232838.log"
+"2026-09-24T23:29:18.0784082+09:00","NOT_EXECUTED","Cisco device or serial number was not confirmed","","","","","COM3","D:\network\work\K\CiscoAutoConfig\logs\probe_COM3_20260924_232838.log"
