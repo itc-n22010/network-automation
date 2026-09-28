@@ -1,0 +1,15 @@
+﻿hostname A-C3750-STN01
+!
+interface Vlan1
+ ip address 192.0.2.12 255.255.255.0
+ no shutdown
+interface Vlan2
+ ip address 2.2.2.2 255.255.255.255
+ no shutdown
+!
+ip default-gateway 192.0.2.1
+!
+ip domain-name example.local
+username admin privilege 15 secret ChangeMeSsh
+
+end
