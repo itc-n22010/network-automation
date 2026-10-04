@@ -1,0 +1,8 @@
+CommandPattern,Type,Required,Forbidden
+^show\s+version\b,serial,FOC1349W2HK,
+^show\s+(?:running-config|run)\b,config,"hostname ${Hostname}",
+^show\s+clock\b,setup,,
+^show\s+vlan\b,text,VLAN Name,
+^show\s+ip\s+interface\s+brief\b,text,${ManagementIP},
+^show\s+interfaces\s+status\b,setup,,
+^show\s+logging\b,setup,,

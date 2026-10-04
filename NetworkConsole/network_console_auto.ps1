@@ -1,5 +1,19 @@
 #requires -Version 5.1
 
+[CmdletBinding()]
+param(
+    [Parameter(Position = 0)]
+    [string]$CommandFile,
+
+    [string]$PortName,
+
+    [ValidateRange(110, 4000000)]
+    [int]$BaudRate = 9600,
+
+    [ValidateRange(1, 7200)]
+    [int]$CommandTimeoutSeconds = 1800
+)
+
 <#
 .SYNOPSIS
     Network Console Automation
@@ -40,7 +54,7 @@ catch {
 # Serial settings
 # ============================================================
 
-$Baud     = 9600
+$Baud     = $BaudRate
 $Parity   = [System.IO.Ports.Parity]::None
 $DataBits = 8
 $StopBits = [System.IO.Ports.StopBits]::One
@@ -55,12 +69,14 @@ $ProbeMaxMs         = 5000
 $ProbeIdleMs        = 500
 
 # ログイン
-$LoginMaxMs         = 30000
+$LoginMaxMs         = 60000
 $LoginIdleMs        = 500
+$PagerAdvanceMs     = 200
 
 # 通常コマンド
-$CommandMaxMs       = 1800000
+$CommandMaxMs       = $CommandTimeoutSeconds * 1000
 $CommandIdleMs      = 500
+$PromptBufferLimit  = 8192
 
 # プロンプト検出後の安定待ち
 $PromptSettleMs     = 200
@@ -88,7 +104,7 @@ $LogRoot    = Join-Path $ScriptRoot 'logs'
 
 $script:Username       = 'admin'
 $script:LoginPassword  = 'password'
-$script:EnablePassword = 'password'
+$script:EnablePassword = 'test'
 
 # ============================================================
 # Session log
@@ -191,6 +207,8 @@ function Get-CleanBuffer {
     $clean = Remove-AnsiEscape $Buffer
 
     $clean = $clean -replace "`0", ''
+    $clean = $clean -replace "`b", ''
+    $clean = $clean -replace "`f", ''
 
     return $clean
 }
@@ -199,7 +217,7 @@ function Get-CleanBuffer {
 # Get last meaningful line
 # ============================================================
 
-function Get-LastMeaningfulLine {
+function Get-ConsoleLines {
 
     param(
         [AllowNull()]
@@ -207,14 +225,32 @@ function Get-LastMeaningfulLine {
     )
 
     if ([string]::IsNullOrEmpty($Buffer)) {
-        return ''
+        return @()
     }
 
     $clean = Get-CleanBuffer $Buffer
 
-    $clean = $clean -replace "`r", ''
+    if ($null -eq $clean) {
+        return [string[]]@()
+    }
 
-    $lines = $clean -split "`n"
+    $lf = [char]10
+    $cr = [char]13
+
+    $clean = $clean.Replace(([string]$cr + $lf), [string]$lf)
+    $clean = $clean.Replace([string]$cr, [string]$lf)
+
+    return [string[]]$clean.Split($lf)
+}
+
+function Get-LastMeaningfulLine {
+
+    param(
+        [AllowNull()]
+        [string]$Buffer
+    )
+
+    [string[]]$lines = @(Get-ConsoleLines $Buffer)
 
     for (
         $i = $lines.Count - 1;
@@ -222,11 +258,65 @@ function Get-LastMeaningfulLine {
         $i--
     ) {
 
-        $line = $lines[$i].Trim()
+        $line = ([string]$lines[$i]).Trim()
 
         if (-not [string]::IsNullOrWhiteSpace($line)) {
             return $line
         }
+    }
+
+    return ''
+}
+
+# Cisco console logging / %SYS messages after a prompt.
+# These must not hide hostname# / hostname>.
+function Test-UnsolicitedConsoleLine {
+
+    param(
+        [AllowNull()]
+        [string]$Line
+    )
+
+    if ([string]::IsNullOrWhiteSpace($Line)) {
+        return $false
+    }
+
+    return (
+        $Line -match
+        '(?i)^(?:\*\w{3}\s+\d{1,2}\s+\d{1,2}:\d{2}:\d{2}|%\S+-\d+-\S+)'
+    )
+}
+
+function Get-LastPromptCandidateLine {
+
+    param(
+        [AllowNull()]
+        [string]$Buffer
+    )
+
+    [string[]]$lines = @(Get-ConsoleLines $Buffer)
+
+    for (
+        $i = $lines.Count - 1;
+        $i -ge 0;
+        $i--
+    ) {
+
+        $line = ([string]$lines[$i]).Trim()
+
+        if ([string]::IsNullOrWhiteSpace($line)) {
+            continue
+        }
+
+        if (Test-PagerPrompt $line) {
+            return $line
+        }
+
+        if (Test-UnsolicitedConsoleLine $line) {
+            continue
+        }
+
+        return $line
     }
 
     return ''
@@ -260,7 +350,7 @@ function Test-Prompt {
         return $false
     }
 
-    $line = Get-LastMeaningfulLine $Buffer
+    $line = Get-LastPromptCandidateLine $Buffer
 
     if ([string]::IsNullOrWhiteSpace($line)) {
         return $false
@@ -270,7 +360,7 @@ function Test-Prompt {
 
     return (
         $line -match
-        ('^' + $hostPattern + '[>#]\s*$')
+        ('^' + $hostPattern + '(?:\([^)]*\))?[>#]\s*$')
     )
 }
 
@@ -289,11 +379,11 @@ function Get-HostnameFromBuffer {
         return $null
     }
 
-    $clean = Get-CleanBuffer $Buffer
+    if (Test-PagerPrompt $Buffer) {
+        return $null
+    }
 
-    $clean = $clean -replace "`r", ''
-
-    $lines = $clean -split "`n"
+    [string[]]$lines = @(Get-ConsoleLines $Buffer)
 
     for (
         $i = $lines.Count - 1;
@@ -301,17 +391,61 @@ function Get-HostnameFromBuffer {
         $i--
     ) {
 
-        $line = $lines[$i].Trim()
+        $line = ([string]$lines[$i]).Trim()
+
+        if (
+            [string]::IsNullOrWhiteSpace($line) -or
+            (Test-UnsolicitedConsoleLine $line)
+        ) {
+            continue
+        }
 
         if (
             $line -match
-            '^([A-Za-z0-9_.\-]+)[>#]\s*$'
+            '^([A-Za-z0-9_.\-]+)(?:\([^)]*\))?[>#]\s*$'
         ) {
             return $Matches[1]
         }
     }
 
     return $null
+}
+
+# ============================================================
+# Detect and advance terminal pagers
+# ============================================================
+
+function Test-PagerPrompt {
+
+    param(
+        [AllowNull()]
+        [string]$Buffer
+    )
+
+    if ([string]::IsNullOrEmpty($Buffer)) {
+        return $false
+    }
+
+    $line = Get-LastMeaningfulLine $Buffer
+
+    return (
+        $line -match
+        '(?i)(--+\s*more\s*--+|---+\s*\(more\)\s*---+|^\s*--\s*more\s*--|^\s*more\s*:|press any key to continue)'
+    )
+}
+
+function Send-PagerContinue {
+
+    param(
+        [System.IO.Ports.SerialPort]$Port
+    )
+
+    if ($null -eq $Port -or -not $Port.IsOpen) {
+        throw 'Serial port is not open while advancing a terminal pager.'
+    }
+
+    # Space is the common continue key for Cisco/Allied/HP-style pagers.
+    $Port.Write(' ')
 }
 
 # ============================================================
@@ -343,6 +477,8 @@ function Read-SerialData {
             if (-not [string]::IsNullOrEmpty($chunk)) {
 
                 $result += $chunk
+
+                [Console]::Write($chunk)
 
                 Add-SessionData $chunk
             }
@@ -389,6 +525,11 @@ function Read-UntilQuiet {
 
                 $buffer += $chunk
                 $lastData = Get-Date
+
+                if (Test-PagerPrompt $buffer) {
+                    Send-PagerContinue $Port
+                }
+
                 continue
             }
         }
@@ -444,7 +585,27 @@ function Read-UntilPrompt {
 
                 $buffer += $chunk
 
-                $promptSeenAt = $null
+                if ($buffer.Length -gt $PromptBufferLimit) {
+                    $buffer = $buffer.Substring(
+                        $buffer.Length - $PromptBufferLimit
+                    )
+                }
+
+                if (Test-PagerPrompt $buffer) {
+                    Send-PagerContinue $Port
+                    $promptSeenAt = $null
+                    continue
+                }
+
+                if (
+                    -not (
+                        Test-Prompt `
+                            -Buffer $buffer `
+                            -Hostname $Hostname
+                    )
+                ) {
+                    $promptSeenAt = $null
+                }
 
                 continue
             }
@@ -460,15 +621,15 @@ function Read-UntilPrompt {
 
                 $promptSeenAt = Get-Date
             }
-            else {
-
-                if (
-                    ((Get-Date) - $promptSeenAt).TotalMilliseconds -ge
-                    $SettleMs
-                ) {
-                    break
-                }
+            elseif (
+                ((Get-Date) - $promptSeenAt).TotalMilliseconds -ge
+                $SettleMs
+            ) {
+                break
             }
+        }
+        else {
+            $promptSeenAt = $null
         }
 
         Start-Sleep -Milliseconds 25
@@ -614,8 +775,61 @@ function Test-LoginFailure {
 
     return (
         $clean -match
-        '(?i)(login incorrect|login invalid|authentication failed|access denied|bad password)'
+        '(?i)(login incorrect|login invalid|authentication failed|access denied|bad password|bad secrets|% auth)'
     )
+}
+
+# ============================================================
+# Detect initial setup / autoinstall questions
+# ============================================================
+
+function Get-SetupQuestionAnswer {
+
+    param(
+        [string]$Buffer
+    )
+
+    if ([string]::IsNullOrEmpty($Buffer)) {
+        return $null
+    }
+
+    $line = Get-LastMeaningfulLine $Buffer
+
+    if ([string]::IsNullOrWhiteSpace($line)) {
+        return $null
+    }
+
+    if (
+        $line -match
+        '(?i)initial configuration dialog|basic management setup'
+    ) {
+        return 'no'
+    }
+
+    if (
+        $line -match
+        '(?i)terminate (?:autoinstall|pnp|auto.?install)'
+    ) {
+        return 'yes'
+    }
+
+    return $null
+}
+
+function Send-ConsoleText {
+
+    param(
+        [System.IO.Ports.SerialPort]$Port,
+
+        [string]$Text
+    )
+
+    if ($null -eq $Port -or -not $Port.IsOpen) {
+        throw 'Serial port is not open.'
+    }
+
+    $Port.Write($Text)
+    $Port.Write("`r")
 }
 
 # ============================================================
@@ -664,6 +878,25 @@ function Invoke-Login {
 
                 $buffer += $chunk
             }
+        }
+
+        if (Test-PagerPrompt $buffer) {
+            Send-PagerContinue $Port
+            $lastAction = Get-Date
+            Start-Sleep -Milliseconds $PagerAdvanceMs
+            continue
+        }
+
+        $setupAnswer = Get-SetupQuestionAnswer $buffer
+
+        if ($null -ne $setupAnswer) {
+
+            Write-Host "Answering setup prompt: $setupAnswer"
+            Send-ConsoleText -Port $Port -Text $setupAnswer
+            $buffer = ''
+            $lastAction = Get-Date
+            Start-Sleep -Milliseconds 200
+            continue
         }
 
         # ----------------------------------------------------
@@ -872,15 +1105,15 @@ function Invoke-EnableMode {
     }
 
     $lastLine =
-        Get-LastMeaningfulLine $CurrentBuffer
+        Get-LastPromptCandidateLine $CurrentBuffer
 
     # 既に #
-    if ($lastLine -match '^' + [regex]::Escape($hostname) + '#\s*$') {
+    if ($lastLine -match '^' + [regex]::Escape($hostname) + '(?:\([^)]*\))?#\s*$') {
         return $CurrentBuffer
     }
 
     # >
-    if ($lastLine -match '^' + [regex]::Escape($hostname) + '>\s*$') {
+    if ($lastLine -match '^' + [regex]::Escape($hostname) + '(?:\([^)]*\))?>\s*$') {
 
         # enable はログイン後の権限昇格に必要な場合のみ送る
         $Port.Write('enable')
@@ -913,31 +1146,34 @@ function Invoke-EnableMode {
             $Port.Write($script:EnablePassword)
             $Port.Write("`r")
 
-            $buffer = Read-UntilQuiet `
+            $buffer = Read-UntilPrompt `
                 -Port $Port `
-                -IdleMs $LoginIdleMs `
-                -MaxTotalMs 10000
+                -Hostname $hostname `
+                -MaxTotalMs 10000 `
+                -SettleMs $PromptSettleMs
+        }
+        elseif (
+            -not (Test-Prompt -Buffer $buffer -Hostname $hostname)
+        ) {
+            $buffer += Read-UntilPrompt `
+                -Port $Port `
+                -Hostname $hostname `
+                -MaxTotalMs 10000 `
+                -SettleMs $PromptSettleMs
         }
 
-        $resultHostname =
-            Get-HostnameFromBuffer $buffer
-
-        if (-not $resultHostname) {
-            throw 'Hostname could not be detected after enable.'
-        }
-
-        $lastLine =
-            Get-LastMeaningfulLine $buffer
+        $combinedBuffer = $CurrentBuffer + $buffer
+        $lastLine = Get-LastPromptCandidateLine $buffer
 
         if (
             $lastLine -notmatch
-            '^' + [regex]::Escape($resultHostname) + '#\s*$'
+            '^' + [regex]::Escape($hostname) + '(?:\([^)]*\))?#\s*$'
         ) {
 
             throw 'Enable mode elevation failed.'
         }
 
-        return $buffer
+        return $combinedBuffer
     }
 
     throw 'Unknown console prompt after login.'
@@ -975,8 +1211,16 @@ function Test-ConsolePort {
 
         $port.ReadTimeout = 500
         $port.WriteTimeout = 3000
+        $port.ReadBufferSize = 65536
+        $port.WriteBufferSize = 4096
+        $port.Handshake = [System.IO.Ports.Handshake]::None
+        $port.DtrEnable = $true
+        $port.RtsEnable = $true
 
         $port.Open()
+
+        $port.DtrEnable = $true
+        $port.RtsEnable = $true
 
         $port.DiscardInBuffer()
         $port.DiscardOutBuffer()
@@ -1187,11 +1431,9 @@ try {
     # Command file
     # ========================================================
 
-    if ($args.Count -lt 1) {
+    if ([string]::IsNullOrWhiteSpace($CommandFile)) {
         throw 'Command file argument is missing.'
     }
-
-    $CommandFile = $args[0]
 
     if (
         -not (
@@ -1213,6 +1455,14 @@ try {
         )
 
     Write-Host "Command file: $CommandFile"
+
+    $fallbackLogDir = Join-Path $LogRoot 'unidentified'
+    if (-not (Test-Path -LiteralPath $fallbackLogDir -PathType Container)) {
+        New-Item -ItemType Directory -Path $fallbackLogDir -Force | Out-Null
+    }
+
+    $fallbackBaseName = [System.IO.Path]::GetFileNameWithoutExtension($CommandFile)
+    $logPath = Join-Path $fallbackLogDir ($fallbackBaseName + '.log')
 
     # ========================================================
     # Load commands
@@ -1242,18 +1492,23 @@ try {
     # COM ports
     # ========================================================
 
-    $candidatePorts =
-        @(
-            [System.IO.Ports.SerialPort]::GetPortNames() |
-            Sort-Object {
-                if ($_ -match '\d+$') {
-                    [int]$Matches[0]
+    if (-not [string]::IsNullOrWhiteSpace($PortName)) {
+        $candidatePorts = @($PortName.Trim())
+    }
+    else {
+        $candidatePorts =
+            @(
+                [System.IO.Ports.SerialPort]::GetPortNames() |
+                Sort-Object {
+                    if ($_ -match '\d+$') {
+                        [int]$Matches[0]
+                    }
+                    else {
+                        99999
+                    }
                 }
-                else {
-                    99999
-                }
-            }
-        )
+            )
+    }
 
     if ($candidatePorts.Count -eq 0) {
         throw 'No COM ports detected.'
